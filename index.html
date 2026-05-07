@@ -56,11 +56,11 @@ const C={
 
 const COMPANY={name:"Coscoom Creative Tech Solutions",brand:"Idappadi Creators",email:"anantharajeinstein@gmail.com",phone:"8778148899",addr:"21/AJ,68,New Street,Kavandampatti,Idappadi,Salem-637101",state:"Tamilnadu"};
 
-// ── INITIAL DATA ─────────────────────────────────────────────────
+// ── INITIAL DATA (MODIFIED ADMINS) ───────────────────────────────
 const INIT_ADMINS=[
-  {id:1,name:"Anantharaje Einstein",role:"Super Admin",phone:"8778148899",password:"cosfit@admin",active:true},
-  {id:2,name:"Manager",role:"Manager",phone:"9876543210",password:"mgr@cosfit",active:true},
-  {id:3,name:"Staff",role:"Staff",phone:"9123456789",password:"staff@123",active:false},
+  {id:1,name:"Anantharaj",username:"Anantharajmech",role:"Super Admin",password:"ananthaarthi160893",active:true},
+  {id:2,name:"Aarthi",username:"Aarthimech",role:"Admin",password:"aarthiananth160893",active:true},
+  {id:3,name:"Ajith",username:"Ajithmech",role:"Staff",password:"ajithmerga160893",active:true},
 ];
 
 const INIT_SETTINGS={
@@ -318,15 +318,24 @@ function FoodModal({food,goalId,meal,onSave,onClose}){
 function App(){
   // ── SCREEN & AUTH ──
   const[scr,setScr]=useState("splash");
-  const[authTab,setAuthTab]=useState("login"); // login | register
-  const[authStep,setAuthStep]=useState("form"); // form | otp
+  const[authTab,setAuthTab]=useState("login"); // login | register | forgot
+  const[authStep,setAuthStep]=useState("email"); // For forgot password
   const[otpArr,setOtpArr]=useState(["","","","",""]);
+  const[authErr,setAuthErr]=useState("");
 
   // ── AUTH FIELDS ──
-  const[phone,setPhone]=useState("");
   const[rName,setRName]=useState("");
   const[rUsername,setRUsername]=useState("");
-  const[authErr,setAuthErr]=useState("");
+  const[rEmail,setREmail]=useState("");
+  const[phone,setPhone]=useState("");
+  const[rPassword,setRPassword]=useState("");
+  const[rConfirm,setRConfirm]=useState("");
+  
+  const[loginId,setLoginId]=useState("");
+  const[loginPassword,setLoginPassword]=useState("");
+  
+  const[fEmail,setFEmail]=useState("");
+  const[fNewPass,setFNewPass]=useState("");
 
   // ── USERS & SESSION ──
   const[user,setUser]=useState(null);
@@ -334,7 +343,7 @@ function App(){
   const[isAdmin,setIsAdmin]=useState(false);
   const[adminUser,setAdminUser]=useState(null);
   const[admins,setAdmins]=useState(INIT_ADMINS);
-  const[adminPh,setAdminPh]=useState("");
+  const[adminUsername,setAdminUsername]=useState("");
   const[adminPw,setAdminPw]=useState("");
 
   // ── APP DATA ──
@@ -391,45 +400,78 @@ function App(){
   const menuItems=(foods[mGoal]?.[mMeal]||[]).filter(i=>i.active&&i.stock&&(!search||i.name.toLowerCase().includes(search.toLowerCase())||i.tag.toLowerCase().includes(search.toLowerCase())));
 
   // ── AUTH HANDLERS ──────────────────────────────────────────────
-  const handleGetOTP=()=>{
+  const handleRegister=()=>{
     setAuthErr("");
-    if(phone.length!==10){setAuthErr("Please enter a valid 10-digit mobile number");return;}
-    if(authTab==="login"){
-      if(!users.find(u=>u.phone===phone)){setAuthErr("This number is not registered. Please sign up!");return;}
-    }else{
-      if(!rName.trim()||rName.trim().length<2){setAuthErr("Please enter your full name (min 2 characters)");return;}
-      if(!rUsername.trim()||rUsername.trim().length<3){setAuthErr("Username must be at least 3 characters");return;}
-      if(!/^[a-z0-9_.]+$/i.test(rUsername)){setAuthErr("Username can only have letters, numbers, _ and .");return;}
-      if(users.find(u=>u.username===rUsername.toLowerCase())){setAuthErr("Username already taken. Try another!");return;}
-      if(users.find(u=>u.phone===phone)){setAuthErr("This number is already registered. Sign in instead!");return;}
+    if(!rName || !rUsername || !rEmail || !phone || !rPassword) return setAuthErr("All fields are required");
+    if(rPassword !== rConfirm) return setAuthErr("Passwords do not match");
+    if(rPassword.length < 6) return setAuthErr("Password must be at least 6 characters");
+    if(!rEmail.includes("@")) return setAuthErr("Enter a valid email address");
+    
+    if(users.find(u=>u.username===rUsername.toLowerCase() || u.email===rEmail.toLowerCase() || u.phone===phone)){
+      return setAuthErr("User already exists with these details.");
     }
-    setOtpArr(["","","","",""]);
-    setAuthStep("otp");
+
+    const nu={
+      id:nid(), name:rName.trim(), username:rUsername.toLowerCase().trim(), email:rEmail.toLowerCase().trim(),
+      phone, password:rPassword, avatar:"😊", plan:null, planActivatedAt:null, address:"",
+      goal:"general", pref:"all", age:"25", weight:"70", height:"175", gender:"m", joinedAt:new Date().toISOString()
+    };
+    setUsers(p=>[...p,nu]);
+    setUser(nu); setScr("onboard"); pop("Account created successfully! 🎉");
   };
 
-  const handleVerifyOTP=()=>{
+  const handleLogin=()=>{
     setAuthErr("");
-    if(otpArr.join("")!=="12345"){setAuthErr("Wrong OTP. Try 12345 for demo");return;}
-    if(authTab==="login"){
-      const u=users.find(x=>x.phone===phone);
-      if(u){setUser(u);setMGoal(u.goal||"general");setScr("app");pop(`Welcome back, ${u.name.split(" ")[0]}! 👋`);}
-    }else{
-      const nu={id:nid(),name:rName.trim(),username:rUsername.toLowerCase().trim(),phone,avatar:"😊",plan:null,planActivatedAt:null,address:"",goal:"general",pref:"all",age:"25",weight:"70",height:"175",gender:"m",joinedAt:new Date().toISOString()};
-      setUsers(p=>[...p,nu]);
-      setUser(nu);setScr("onboard");pop("Account created! Complete your profile 🎉");
-    }
+    if(!loginId || !loginPassword) return setAuthErr("Enter Username/Email and Password");
+    
+    const u = users.find(x=>(x.email===loginId.toLowerCase() || x.username===loginId.toLowerCase()) && x.password===loginPassword);
+    if(!u) return setAuthErr("Invalid credentials. Please try again.");
+
+    setUser(u); setMGoal(u.goal||"general"); setScr("app"); pop(`Welcome back, ${u.name.split(" ")[0]}! 👋`);
+  };
+
+  const handleForgotEmail=()=>{
+    setAuthErr("");
+    if(!fEmail.includes("@")) return setAuthErr("Enter a valid email");
+    if(!users.find(x=>x.email===fEmail.toLowerCase())) return setAuthErr("No account found with this email");
+    setOtpArr(["","","","",""]); setAuthStep("otp"); pop("OTP sent to your email!");
+  };
+
+  const handleForgotOTP=()=>{
+    setAuthErr("");
+    if(otpArr.join("")!=="12345") return setAuthErr("Wrong OTP. Try 12345 for demo");
+    setAuthStep("reset"); pop("OTP Verified!");
+  };
+
+  const handleForgotReset=()=>{
+    setAuthErr("");
+    if(fNewPass.length<6) return setAuthErr("Password must be at least 6 characters");
+    setUsers(p=>p.map(u=>u.email===fEmail.toLowerCase()?{...u,password:fNewPass}:u));
+    setAuthTab("login"); setAuthStep("email"); pop("Password updated successfully! Please login.");
   };
 
   const handleAdminLogin=()=>{
-    const a=admins.find(x=>x.phone===adminPh&&x.password===adminPw&&x.active);
+    const a=admins.find(x=>x.username===adminUsername&&x.password===adminPw&&x.active);
     if(!a){pop("Wrong admin credentials!",true);return;}
-    setAdminUser(a);setIsAdmin(true);setModal(null);setTab("admin");setAdminPh("");setAdminPw("");pop(`Welcome ${a.name}! 🎉`);
+    setAdminUser(a);setIsAdmin(true);setModal(null);setTab("admin");setAdminUsername("");setAdminPw("");pop(`Welcome ${a.name}! 🎉`);
   };
 
   const handleSignOut=()=>{
-    setScr("auth");setUser(null);setCart([]);setOrders([]);setNotifs([]);
-    setIsAdmin(false);setAdminUser(null);setTab("home");
-    setPhone("");setRName("");setRUsername("");setAuthTab("login");setAuthStep("form");setAuthErr("");
+    setScr("auth");
+    setUser(null);
+    setCart([]);
+    setNotifs([]);
+    
+    // 🔥 VERY IMPORTANT FIX: DO NOT RESET orders, users, plans, foods HERE!
+    // This allows orders to persist across sessions so the admin can see them.
+    
+    setIsAdmin(false);
+    setAdminUser(null);
+    setTab("home");
+    setLoginId("");
+    setLoginPassword("");
+    setAuthTab("login");
+    setAuthErr("");
   };
 
   // ── CART & ORDER HANDLERS ──────────────────────────────────────
@@ -495,7 +537,7 @@ function App(){
   </div>;
 
   // ─────────────────────────────────────────────────────────────
-  // AUTH SCREEN
+  // AUTH SCREEN (MODIFIED AS REQUESTED)
   // ─────────────────────────────────────────────────────────────
   if(scr==="auth") return <div style={{minHeight:"100vh",background:C.bg,display:"flex",flexDirection:"column",...F}}>
     {toast&&<Toast t={toast}/>}
@@ -504,15 +546,15 @@ function App(){
       <div style={{marginBottom:32,animation:"up .5s both"}}>
         <div style={{width:64,height:64,background:C.gG,borderRadius:20,display:"flex",alignItems:"center",justifyContent:"center",fontSize:30,boxShadow:"0 0 32px rgba(74,222,128,.3)"}}>🥗</div>
         <div style={{...N,color:C.w,fontSize:32,fontWeight:900,marginTop:16,lineHeight:1.2,letterSpacing:-.8}}>
-          {authStep==="otp"?"Verify OTP 📱":`${authTab==="login"?"Sign In":"Create Account"} 👋`}
+          {authTab==="forgot"?"Reset Password 🔑":authTab==="login"?"Sign In 👋":"Create Account 🚀"}
         </div>
         <div style={{color:C.m,fontSize:14,marginTop:6}}>
-          {authStep==="otp"?"Enter the 5-digit code sent to +91 "+phone:authTab==="login"?"Sign in with your mobile number":"Join Cosfit family today"}
+          {authTab==="forgot"?"Securely reset your password":authTab==="login"?"Login with Username or Email":"Join the Cosfit family today"}
         </div>
       </div>
 
       {/* Tabs */}
-      {authStep==="form"&&<div style={{display:"flex",background:C.card,borderRadius:16,padding:4,gap:4,marginBottom:24}}>
+      {authTab!=="forgot"&&<div style={{display:"flex",background:C.card,borderRadius:16,padding:4,gap:4,marginBottom:24}}>
         {[["login","Sign In"],["register","Create Account"]].map(([k,l])=><button key={k} onClick={()=>{setAuthTab(k);setAuthErr("");}} style={{flex:1,padding:"12px",borderRadius:12,border:"none",background:authTab===k?C.gG:"transparent",color:authTab===k?"#060c08":C.m,fontWeight:800,fontSize:14,...N,transition:"all .2s"}}>{l}</button>)}
       </div>}
 
@@ -521,62 +563,60 @@ function App(){
         ⚠️ {authErr}
       </div>}
 
-      {/* FORM STEP */}
-      {authStep==="form"&&<div style={{display:"flex",flexDirection:"column",gap:16,animation:"up .4s both"}}>
-        {authTab==="register"&&<>
-          <Field label="Full Name *" value={rName} onChange={setRName} ph="e.g. Arjun Kumar"/>
-          <Field label="Username *" value={rUsername} onChange={v=>setRUsername(v.toLowerCase().replace(/\s/g,"_"))} ph="e.g. arjun_kumar" note="Only letters, numbers, _ and . allowed"/>
-        </>}
-        {/* Phone */}
-        <div>
-          <div style={{fontSize:10,fontWeight:700,color:C.m,letterSpacing:1.5,textTransform:"uppercase",marginBottom:10,...F}}>Mobile Number *</div>
-          <div style={{display:"flex",gap:12,alignItems:"stretch"}}>
-            <div style={{background:C.card,border:`2px solid ${C.b}`,borderRadius:14,padding:"16px 18px",color:C.w,fontWeight:800,fontSize:15,...N,flexShrink:0,display:"flex",alignItems:"center"}}>+91</div>
-            <input type="tel" maxLength={10} value={phone} onChange={e=>setPhone(e.target.value.replace(/\D/g,""))} placeholder="98765 43210"
-              style={{flex:1,background:C.card,border:`2px solid ${phone.length===10?"#4ade80":C.b}`,borderRadius:14,padding:"16px 20px",color:C.w,fontSize:18,fontWeight:700,...F,boxSizing:"border-box",transition:"border-color .2s",minWidth:0}}/>
-          </div>
-          <div style={{fontSize:12,color:C.m,marginTop:8,...F}}>{authTab==="login"?"Enter your registered mobile number":"We'll send a one-time password to verify"}</div>
+      {/* LOGIN */}
+      {authTab==="login"&&<div style={{display:"flex",flexDirection:"column",gap:16,animation:"up .4s both"}}>
+        <Field label="Username or Email *" value={loginId} onChange={setLoginId} ph="e.g. arjun or arjun@gmail.com"/>
+        <Field label="Password *" value={loginPassword} onChange={setLoginPassword} type="password" ph="Enter your password"/>
+        <div style={{textAlign:"right",marginTop:-8}}>
+          <span style={{color:C.g,fontSize:12,fontWeight:700,cursor:"pointer"}} onClick={()=>{setAuthTab("forgot");setAuthStep("email");setAuthErr("");}}>Forgot Password?</span>
         </div>
-        <button onClick={handleGetOTP} style={{padding:"18px",borderRadius:16,border:"none",background:C.gG,color:"#060c08",...N,fontSize:17,fontWeight:900,boxShadow:"0 8px 36px rgba(74,222,128,.4)",marginTop:4,letterSpacing:.3}}>
-          Get OTP →
-        </button>
-        <div style={{textAlign:"center",color:C.m,fontSize:13}}>
-          {authTab==="login"?"New to Cosfit? ":"Already have account? "}
-          <span style={{color:C.g,fontWeight:700,cursor:"pointer"}} onClick={()=>{setAuthTab(authTab==="login"?"register":"login");setAuthErr("");}}>
-            {authTab==="login"?"Create Account →":"Sign In →"}
-          </span>
-        </div>
+        <button onClick={handleLogin} style={{padding:"18px",borderRadius:16,border:"none",background:C.gG,color:"#060c08",...N,fontSize:17,fontWeight:900,boxShadow:"0 8px 36px rgba(74,222,128,.4)",marginTop:4}}>Secure Login →</button>
         <div style={{textAlign:"center",padding:"16px 0",borderTop:`1px solid ${C.b}`,marginTop:8}}>
           <div style={{color:C.m,fontSize:12,marginBottom:8}}>Admin? Access Control Panel</div>
           <button onClick={()=>setModal({type:"adminLogin"})} style={{background:"rgba(96,165,250,.1)",border:"1px solid rgba(96,165,250,.3)",color:C.blue,padding:"10px 24px",borderRadius:20,fontWeight:700,fontSize:13,...F}}>⚙️ Admin Login</button>
         </div>
       </div>}
 
-      {/* OTP STEP */}
-      {authStep==="otp"&&<div style={{display:"flex",flexDirection:"column",gap:16,animation:"up .4s both"}}>
-        <OTPBoxes otp={otpArr} setOtp={setOtpArr}/>
-        <div style={{fontSize:13,color:C.m,textAlign:"center"}}>Demo OTP: <span style={{color:C.g,fontWeight:800}}>1 2 3 4 5</span></div>
-        <button onClick={handleVerifyOTP} style={{padding:"18px",borderRadius:16,border:"none",background:C.gG,color:"#060c08",...N,fontSize:17,fontWeight:900,boxShadow:"0 8px 36px rgba(74,222,128,.4)"}}>
-          Verify & Continue ✓
-        </button>
-        <button onClick={()=>{setAuthStep("form");setAuthErr("");setOtpArr(["","","","",""]);}} style={{padding:"14px",borderRadius:16,border:`1.5px solid ${C.b}`,background:"transparent",color:C.m,...F,fontWeight:700,fontSize:14}}>
-          ← Change Number
-        </button>
+      {/* REGISTER */}
+      {authTab==="register"&&<div style={{display:"flex",flexDirection:"column",gap:16,animation:"up .4s both"}}>
+        <Field label="Full Name *" value={rName} onChange={setRName} ph="e.g. Arjun Kumar"/>
+        <Field label="Username *" value={rUsername} onChange={v=>setRUsername(v.toLowerCase().replace(/\s/g,"_"))} ph="e.g. arjun_kumar"/>
+        <Field label="Gmail Address *" value={rEmail} onChange={setREmail} type="email" ph="e.g. arjun@gmail.com"/>
+        <Field label="Mobile Number *" value={phone} onChange={e=>setPhone(e.replace(/\D/g,""))} type="tel" ph="98765 43210"/>
+        <Field label="Password *" value={rPassword} onChange={setRPassword} type="password" ph="Create a strong password"/>
+        <Field label="Confirm Password *" value={rConfirm} onChange={setRConfirm} type="password" ph="Confirm your password"/>
+        <button onClick={handleRegister} style={{padding:"18px",borderRadius:16,border:"none",background:C.gG,color:"#060c08",...N,fontSize:17,fontWeight:900,boxShadow:"0 8px 36px rgba(74,222,128,.4)",marginTop:4}}>Create Account →</button>
+      </div>}
+
+      {/* FORGOT PASSWORD */}
+      {authTab==="forgot"&&<div style={{display:"flex",flexDirection:"column",gap:16,animation:"up .4s both"}}>
+        {authStep==="email"&&<>
+          <Field label="Registered Gmail Address *" value={fEmail} onChange={setFEmail} type="email" ph="Enter your email"/>
+          <button onClick={handleForgotEmail} style={{padding:"18px",borderRadius:16,border:"none",background:C.gG,color:"#060c08",...N,fontSize:16,fontWeight:900,boxShadow:"0 8px 36px rgba(74,222,128,.4)"}}>Send Verification Code</button>
+        </>}
+        {authStep==="otp"&&<>
+          <div style={{fontSize:13,color:C.m,textAlign:"center",marginBottom:-6}}>Enter the 5-digit verification code sent to {fEmail}</div>
+          <OTPBoxes otp={otpArr} setOtp={setOtpArr}/>
+          <div style={{fontSize:12,color:C.m,textAlign:"center"}}>Demo OTP: <span style={{color:C.g,fontWeight:800}}>1 2 3 4 5</span></div>
+          <button onClick={handleForgotOTP} style={{padding:"18px",borderRadius:16,border:"none",background:C.gG,color:"#060c08",...N,fontSize:16,fontWeight:900,boxShadow:"0 8px 36px rgba(74,222,128,.4)"}}>Verify Code ✓</button>
+        </>}
+        {authStep==="reset"&&<>
+          <Field label="New Password *" value={fNewPass} onChange={setFNewPass} type="password" ph="Enter new password"/>
+          <button onClick={handleForgotReset} style={{padding:"18px",borderRadius:16,border:"none",background:C.gG,color:"#060c08",...N,fontSize:16,fontWeight:900,boxShadow:"0 8px 36px rgba(74,222,128,.4)"}}>Update Password</button>
+        </>}
+        <button onClick={()=>{setAuthTab("login");setAuthErr("");}} style={{padding:"14px",borderRadius:16,border:`1.5px solid ${C.b}`,background:"transparent",color:C.m,...F,fontWeight:700,fontSize:14}}>← Back to Login</button>
       </div>}
     </div>
 
-    {/* Admin Login Modal */}
+    {/* Admin Login Modal (Hidden Password logic) */}
     {modal?.type==="adminLogin"&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.93)",zIndex:960,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
       <div style={{background:C.surf,borderRadius:24,padding:"28px 24px",width:"100%",maxWidth:340,animation:"up .35s cubic-bezier(.34,1.56,.64,1)"}}>
         <div style={{fontSize:48,textAlign:"center"}}>🔐</div>
         <div style={{...N,color:C.w,fontSize:20,fontWeight:900,textAlign:"center",marginTop:12}}>Admin Login</div>
-        <div style={{color:C.m,fontSize:12,textAlign:"center",marginTop:4,marginBottom:20}}>Max 3 admin accounts · Role-based access</div>
+        <div style={{color:C.m,fontSize:12,textAlign:"center",marginTop:4,marginBottom:20}}>Restricted Access Only</div>
         <div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:16}}>
-          <input type="tel" maxLength={10} placeholder="Admin Phone Number" value={adminPh} onChange={e=>setAdminPh(e.target.value.replace(/\D/g,""))} style={{width:"100%",padding:"13px 16px",background:C.card,border:`1.5px solid ${C.b}`,borderRadius:12,color:C.w,fontSize:14,...F,boxSizing:"border-box"}}/>
+          <input type="text" placeholder="Admin Username" value={adminUsername} onChange={e=>setAdminUsername(e.target.value)} style={{width:"100%",padding:"13px 16px",background:C.card,border:`1.5px solid ${C.b}`,borderRadius:12,color:C.w,fontSize:14,...F,boxSizing:"border-box"}}/>
           <input type="password" placeholder="Password" value={adminPw} onChange={e=>setAdminPw(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleAdminLogin()} style={{width:"100%",padding:"13px 16px",background:C.card,border:`1.5px solid ${C.b}`,borderRadius:12,color:C.w,fontSize:14,...F,boxSizing:"border-box"}}/>
-        </div>
-        <div style={{background:"rgba(96,165,250,.08)",border:"1px solid rgba(96,165,250,.2)",borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:11,color:C.blue}}>
-          {admins.filter(a=>a.active).map(a=><div key={a.id}>📋 {a.role}: {a.phone} / {a.password}</div>)}
         </div>
         <div style={{display:"flex",gap:8}}>
           <button onClick={handleAdminLogin} style={{flex:1,background:C.gG,color:"#060c08",border:"none",padding:"13px",borderRadius:12,fontWeight:800,fontSize:14,...N}}>Enter</button>
@@ -1356,19 +1396,18 @@ function App(){
 
         {/* Admin Accounts */}
         <div style={{background:C.card,borderRadius:20,padding:18,border:`1px solid ${C.b}`,marginBottom:14}}>
-          <div style={{...N,color:C.w,fontWeight:800,fontSize:15,marginBottom:14}}>👥 Admin Accounts (Max 3)</div>
+          <div style={{...N,color:C.w,fontWeight:800,fontSize:15,marginBottom:14}}>👥 Admin Accounts (Authorized Only)</div>
           {admins.map(a=><div key={a.id} style={{background:C.surf,borderRadius:14,padding:"14px",marginBottom:10,border:`1px solid ${a.active?"rgba(74,222,128,.3)":C.b}`,opacity:a.active?1:.5}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
               <div>
                 <div style={{...N,color:C.w,fontWeight:800,fontSize:14}}>{a.name}</div>
                 <div style={{color:C.g,fontSize:11,fontWeight:700,marginTop:2}}>{a.role}</div>
-                <div style={{color:C.m,fontSize:11,marginTop:2}}>📞 {a.phone}</div>
+                <div style={{color:C.m,fontSize:11,marginTop:2}}>@{a.username}</div>
               </div>
               <button onClick={()=>setAdmins(p=>p.map(x=>x.id===a.id?{...x,active:!x.active}:x))} style={{background:a.active?"rgba(74,222,128,.12)":"rgba(248,113,113,.12)",border:"none",color:a.active?C.g:C.r,padding:"8px 14px",borderRadius:20,fontWeight:700,fontSize:11,...F}}>
                 {a.active?"✓ Active":"✗ Inactive"}
               </button>
             </div>
-            <div style={{background:C.b2,borderRadius:9,padding:"7px 12px",fontSize:11,color:C.m}}>Password: {a.password}</div>
           </div>)}
         </div>
       </div>}
