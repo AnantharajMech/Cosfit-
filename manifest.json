@@ -1,13 +1,12 @@
 {
-  "name": "Cosfit - Fitness Food Delivery",
+  "name": "Cosfit - Eat Smart Live Strong",
   "short_name": "Cosfit",
-  "description": "Smart fitness food delivery app",
-  "start_url": "/cosfit-app/",
-  "scope": "/cosfit-app/",
+  "description": "Smart fitness food delivery by Coscoom Creative Tech Solutions",
+  "start_url": "./index.html",
   "display": "standalone",
-  "orientation": "portrait",
   "background_color": "#060c08",
   "theme_color": "#4ade80",
+  "orientation": "portrait",
   "icons": [
     {
       "src": "icon.png",
