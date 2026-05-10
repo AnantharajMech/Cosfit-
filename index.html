@@ -12,6 +12,13 @@
 <link rel="manifest" href="manifest.json"/>
 <link rel="apple-touch-icon" href="icon.png"/>
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+
+<script src="https://cdn.jsdelivr.net/npm/eruda"></script>
+<script>eruda.init();</script>
+
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+
 <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -318,8 +325,8 @@ function FoodModal({food,goalId,meal,onSave,onClose}){
 function App(){
   // ── SCREEN & AUTH ──
   const[scr,setScr]=useState("splash");
-  const[authTab,setAuthTab]=useState("login"); // login | register | forgot
-  const[authStep,setAuthStep]=useState("email"); // For forgot password
+  const[authTab,setAuthTab]=useState("login"); 
+  const[authStep,setAuthStep]=useState("email"); 
   const[otpArr,setOtpArr]=useState(["","","","",""]);
   const[authErr,setAuthErr]=useState("");
 
@@ -330,10 +337,8 @@ function App(){
   const[phone,setPhone]=useState("");
   const[rPassword,setRPassword]=useState("");
   const[rConfirm,setRConfirm]=useState("");
-  
   const[loginId,setLoginId]=useState("");
   const[loginPassword,setLoginPassword]=useState("");
-  
   const[fEmail,setFEmail]=useState("");
   const[fNewPass,setFNewPass]=useState("");
 
@@ -370,6 +375,47 @@ function App(){
   // ── ONBOARD ──
   const[ob,setOb]=useState({step:0,goal:"",pref:"",age:"",weight:"",height:"",gender:"m"});
 
+  // 🔥 FIXED: FIREBASE INITIALIZATION & SYNC LOGIC 🔥
+  useEffect(() => {
+    const initFirebase = async () => {
+      try {
+        if (!window.firebase.apps.length) {
+          window.firebase.initializeApp({
+            apiKey: "AIzaSyBaNFG34QfaciXeOVQWQtNGoMI65ozEVTA",
+            authDomain: "cosfit-af85d.firebaseapp.com",
+            projectId: "cosfit-af85d",
+            storageBucket: "cosfit-af85d.firebasestorage.app",
+            messagingSenderId: "58737921778",
+            appId: "1:58737921778:web:1dbd0913dfbbf05f494a6b"
+          });
+        }
+        
+        const db = window.firebase.firestore();
+        window.fbDB = db; // Global access for sync
+        
+        const docRef = db.collection("app_data").doc("foods_menu");
+        const snap = await docRef.get();
+        
+        if (snap.exists) {
+          setFoods(snap.data());
+        } else {
+          // Upload INIT_FOODS if database is empty
+          await docRef.set(INIT_FOODS);
+        }
+      } catch (err) { console.error("Firebase Error: ", err); }
+    };
+    initFirebase();
+  }, []);
+
+  // Helper to sync modified foods to Firebase instantly
+  const syncToFirebase = async (newFoodsData) => {
+    try {
+      if (window.fbDB) {
+        await window.fbDB.collection("app_data").doc("foods_menu").set(newFoodsData);
+      }
+    } catch (err) { console.error("Sync Error: ", err); }
+  };
+
   useEffect(()=>{
     setTimeout(()=>setScr("auth"),2400);
     window.addEventListener("beforeinstallprompt",e=>{e.preventDefault();setInstallPrompt(e);setShowInstall(true);});
@@ -383,7 +429,6 @@ function App(){
     setNotifs(p=>[n,...p]);setBanner(n);setTimeout(()=>setBanner(null),5000);
   };
 
-  // Computed values
   const cartCount=cart.reduce((s,i)=>s+i.qty,0);
   const cartSub=cart.reduce((s,i)=>s+i.price*i.qty,0);
   const delivery=cartSub>=settings.freeDeliveryMin?0:settings.deliveryCharge;
@@ -399,126 +444,76 @@ function App(){
   const aiTips=user?getAITips(user,orders):[];
   const menuItems=(foods[mGoal]?.[mMeal]||[]).filter(i=>i.active&&i.stock&&(!search||i.name.toLowerCase().includes(search.toLowerCase())||i.tag.toLowerCase().includes(search.toLowerCase())));
 
-  // ── AUTH HANDLERS ──────────────────────────────────────────────
+  // ── AUTH HANDLERS ──
   const handleRegister=()=>{
     setAuthErr("");
     if(!rName || !rUsername || !rEmail || !phone || !rPassword) return setAuthErr("All fields are required");
     if(rPassword !== rConfirm) return setAuthErr("Passwords do not match");
     if(rPassword.length < 6) return setAuthErr("Password must be at least 6 characters");
     if(!rEmail.includes("@")) return setAuthErr("Enter a valid email address");
-    
-    if(users.find(u=>u.username===rUsername.toLowerCase() || u.email===rEmail.toLowerCase() || u.phone===phone)){
-      return setAuthErr("User already exists with these details.");
-    }
-
-    const nu={
-      id:nid(), name:rName.trim(), username:rUsername.toLowerCase().trim(), email:rEmail.toLowerCase().trim(),
-      phone, password:rPassword, avatar:"😊", plan:null, planActivatedAt:null, address:"",
-      goal:"general", pref:"all", age:"25", weight:"70", height:"175", gender:"m", joinedAt:new Date().toISOString()
-    };
-    setUsers(p=>[...p,nu]);
-    setUser(nu); setScr("onboard"); pop("Account created successfully! 🎉");
+    if(users.find(u=>u.username===rUsername.toLowerCase() || u.email===rEmail.toLowerCase() || u.phone===phone)) return setAuthErr("User already exists.");
+    const nu={ id:nid(), name:rName.trim(), username:rUsername.toLowerCase().trim(), email:rEmail.toLowerCase().trim(), phone, password:rPassword, avatar:"😊", plan:null, planActivatedAt:null, address:"", goal:"general", pref:"all", age:"25", weight:"70", height:"175", gender:"m", joinedAt:new Date().toISOString() };
+    setUsers(p=>[...p,nu]); setUser(nu); setScr("onboard"); pop("Account created successfully! 🎉");
   };
 
   const handleLogin=()=>{
     setAuthErr("");
     if(!loginId || !loginPassword) return setAuthErr("Enter Username/Email and Password");
-    
     const u = users.find(x=>(x.email===loginId.toLowerCase() || x.username===loginId.toLowerCase()) && x.password===loginPassword);
     if(!u) return setAuthErr("Invalid credentials. Please try again.");
-
     setUser(u); setMGoal(u.goal||"general"); setScr("app"); pop(`Welcome back, ${u.name.split(" ")[0]}! 👋`);
   };
 
-  const handleForgotEmail=()=>{
-    setAuthErr("");
-    if(!fEmail.includes("@")) return setAuthErr("Enter a valid email");
-    if(!users.find(x=>x.email===fEmail.toLowerCase())) return setAuthErr("No account found with this email");
-    setOtpArr(["","","","",""]); setAuthStep("otp"); pop("OTP sent to your email!");
-  };
+  const handleForgotEmail=()=>{ setAuthErr(""); if(!fEmail.includes("@")) return setAuthErr("Enter a valid email"); if(!users.find(x=>x.email===fEmail.toLowerCase())) return setAuthErr("No account found"); setOtpArr(["","","","",""]); setAuthStep("otp"); pop("OTP sent to your email!"); };
+  const handleForgotOTP=()=>{ setAuthErr(""); if(otpArr.join("")!=="12345") return setAuthErr("Wrong OTP. Try 12345 for demo"); setAuthStep("reset"); pop("OTP Verified!"); };
+  const handleForgotReset=()=>{ setAuthErr(""); if(fNewPass.length<6) return setAuthErr("Password must be at least 6 characters"); setUsers(p=>p.map(u=>u.email===fEmail.toLowerCase()?{...u,password:fNewPass}:u)); setAuthTab("login"); setAuthStep("email"); pop("Password updated successfully!"); };
+  const handleAdminLogin=()=>{ const a=admins.find(x=>x.username===adminUsername&&x.password===adminPw&&x.active); if(!a){pop("Wrong admin credentials!",true);return;} setAdminUser(a);setIsAdmin(true);setModal(null);setTab("admin");setAdminUsername("");setAdminPw("");pop(`Welcome ${a.name}! 🎉`); };
+  const handleSignOut=()=>{ setScr("auth"); setUser(null); setCart([]); setNotifs([]); setIsAdmin(false); setAdminUser(null); setTab("home"); setLoginId(""); setLoginPassword(""); setAuthTab("login"); setAuthErr(""); };
 
-  const handleForgotOTP=()=>{
-    setAuthErr("");
-    if(otpArr.join("")!=="12345") return setAuthErr("Wrong OTP. Try 12345 for demo");
-    setAuthStep("reset"); pop("OTP Verified!");
-  };
-
-  const handleForgotReset=()=>{
-    setAuthErr("");
-    if(fNewPass.length<6) return setAuthErr("Password must be at least 6 characters");
-    setUsers(p=>p.map(u=>u.email===fEmail.toLowerCase()?{...u,password:fNewPass}:u));
-    setAuthTab("login"); setAuthStep("email"); pop("Password updated successfully! Please login.");
-  };
-
-  const handleAdminLogin=()=>{
-    const a=admins.find(x=>x.username===adminUsername&&x.password===adminPw&&x.active);
-    if(!a){pop("Wrong admin credentials!",true);return;}
-    setAdminUser(a);setIsAdmin(true);setModal(null);setTab("admin");setAdminUsername("");setAdminPw("");pop(`Welcome ${a.name}! 🎉`);
-  };
-
-  const handleSignOut=()=>{
-    setScr("auth");
-    setUser(null);
-    setCart([]);
-    setNotifs([]);
-    
-    // 🔥 VERY IMPORTANT FIX: DO NOT RESET orders, users, plans, foods HERE!
-    // This allows orders to persist across sessions so the admin can see them.
-    
-    setIsAdmin(false);
-    setAdminUser(null);
-    setTab("home");
-    setLoginId("");
-    setLoginPassword("");
-    setAuthTab("login");
-    setAuthErr("");
-  };
-
-  // ── CART & ORDER HANDLERS ──────────────────────────────────────
+  // ── CART & ORDER ──
   const addToCart=item=>{setCart(p=>{const e=p.find(c=>c.id===item.id);return e?p.map(c=>c.id===item.id?{...c,qty:c.qty+1}:c):[...p,{...item,qty:1}];});pop(`${item.emoji} Added to cart!`);setModal(null);};
   const chgQty=(id,d)=>setCart(p=>p.map(c=>c.id===id?{...c,qty:Math.max(0,c.qty+d)}:c).filter(c=>c.qty>0));
   const getQty=id=>cart.find(c=>c.id===id)?.qty||0;
-
   const placeOrder=()=>{
     if(!cart.length)return;
-    const o={
-      id:Date.now(),
-      userId:user.id,userName:user.name,userUsername:user.username||"—",
-      userPhone:user.phone,userAddress:user.address||"No address provided",
-      items:[...cart],subtotal:cartSub,delivery,gst:gstAmt,platformFee:settings.platformFee,
-      total:orderTotal,statusIdx:0,paymentStatus:"Cash on Delivery",
-      time:new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'}),
-      date:new Date().toLocaleDateString('en-IN'),ts:Date.now(),
-    };
+    const o={ id:Date.now(), userId:user.id,userName:user.name,userUsername:user.username||"—", userPhone:user.phone,userAddress:user.address||"No address provided", items:[...cart],subtotal:cartSub,delivery,gst:gstAmt,platformFee:settings.platformFee, total:orderTotal,statusIdx:0,paymentStatus:"Cash on Delivery", time:new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'}), date:new Date().toLocaleDateString('en-IN'),ts:Date.now() };
     setOrders(p=>[o,...p]);addNotif(0);setCart([]);setTab("track");pop("🎉 Order placed successfully!");
   };
+  const updateOrder=oid=>{ setOrders(p=>p.map(o=>{ if(o.id===oid&&o.statusIdx<4){const ni=o.statusIdx+1;addNotif(ni,{});return{...o,statusIdx:ni};}return o; }));pop("✅ Status updated!"); };
 
-  const updateOrder=oid=>{
-    setOrders(p=>p.map(o=>{
-      if(o.id===oid&&o.statusIdx<4){const ni=o.statusIdx+1;addNotif(ni,{});return{...o,statusIdx:ni};}return o;
-    }));pop("✅ Status updated! Customer notified.");
+  // 🔥 FIREBASE MODIFIED FOOD HANDLERS 🔥
+  const saveFood = (gId, meal, item) => {
+    setFoods(prev => {
+      const arr = prev[gId][meal];
+      const idx = arr.findIndex(x => x.id === item.id);
+      const newFoods = {...prev, [gId]: {...prev[gId], [meal]: idx >= 0 ? arr.map(x => x.id === item.id ? item : x) : [...arr, item]}};
+      syncToFirebase(newFoods); // Sync to DB
+      return newFoods;
+    });
+    pop("✅ Item saved live to Firebase!"); setModal(null);
+  };
+  
+  const deleteFood = (gId, meal, id, name) => {
+    setFoods(prev => {
+      const newFoods = {...prev, [gId]: {...prev[gId], [meal]: prev[gId][meal].filter(x => x.id !== id)}};
+      syncToFirebase(newFoods); // Sync to DB
+      return newFoods;
+    });
+    pop(`🗑 "${name}" deleted from Live DB`);
+  };
+  
+  const toggleProp = (gId, meal, id, prop) => {
+    setFoods(prev => {
+      const newFoods = {...prev, [gId]: {...prev[gId], [meal]: prev[gId][meal].map(x => x.id === id ? {...x, [prop]: !x[prop]} : x)}};
+      syncToFirebase(newFoods); // Sync to DB
+      return newFoods;
+    });
   };
 
-  // ── FOOD HANDLERS ──────────────────────────────────────────────
-  const saveFood=(gId,meal,item)=>{
-    setFoods(p=>{const arr=p[gId][meal];const idx=arr.findIndex(x=>x.id===item.id);
-      return{...p,[gId]:{...p[gId],[meal]:idx>=0?arr.map(x=>x.id===item.id?item:x):[...arr,item]}};});
-    pop("✅ Item saved!");setModal(null);
-  };
-  const deleteFood=(gId,meal,id,name)=>{setFoods(p=>({...p,[gId]:{...p[gId],[meal]:p[gId][meal].filter(x=>x.id!==id)}}));pop(`🗑 "${name}" deleted`);};
-  const toggleProp=(gId,meal,id,prop)=>setFoods(p=>({...p,[gId]:{...p[gId],[meal]:p[gId][meal].map(x=>x.id===id?{...x,[prop]:!x[prop]}:x)}}));
-
-  // ── PLAN HANDLERS ──────────────────────────────────────────────
+  // ── PLAN HANDLERS ──
   const savePlan=p=>{setPlans(prev=>{const idx=prev.findIndex(x=>x.id===p.id);return idx>=0?prev.map(x=>x.id===p.id?p:x):[...prev,p];});pop("✅ Plan saved!");setModal(null);};
   const deletePlan=id=>{setPlans(p=>p.filter(x=>x.id!==id));pop("🗑 Plan deleted");};
-
-  const activatePlan=plan=>{
-    const act={id:nid(),userId:user.id,userName:user.name,userUsername:user.username||"—",userPhone:user.phone,planId:plan.id,planName:plan.label,planPrice:plan.price,planPer:plan.per,activatedAt:new Date().toISOString(),paymentStatus:"Paid",active:true};
-    setPlanActivations(p=>[act,...p]);
-    const upd={...user,plan:plan.id,planName:plan.label,planActivatedAt:act.activatedAt};
-    setUser(upd);setUsers(p=>p.map(u=>u.id===user.id?upd:u));
-    pop(`✅ ${plan.label} plan activated!`);setModal(null);
-  };
+  const activatePlan=plan=>{ const act={id:nid(),userId:user.id,userName:user.name,userUsername:user.username||"—",userPhone:user.phone,planId:plan.id,planName:plan.label,planPrice:plan.price,planPer:plan.per,activatedAt:new Date().toISOString(),paymentStatus:"Paid",active:true}; setPlanActivations(p=>[act,...p]); const upd={...user,plan:plan.id,planName:plan.label,planActivatedAt:act.activatedAt}; setUser(upd);setUsers(p=>p.map(u=>u.id===user.id?upd:u)); pop(`✅ ${plan.label} plan activated!`);setModal(null); };
 
   // ─────────────────────────────────────────────────────────────
   // SPLASH
@@ -537,12 +532,11 @@ function App(){
   </div>;
 
   // ─────────────────────────────────────────────────────────────
-  // AUTH SCREEN (MODIFIED AS REQUESTED)
+  // AUTH SCREEN
   // ─────────────────────────────────────────────────────────────
   if(scr==="auth") return <div style={{minHeight:"100vh",background:C.bg,display:"flex",flexDirection:"column",...F}}>
     {toast&&<Toast t={toast}/>}
     <div style={{flex:1,overflowY:"auto",padding:"52px 28px 40px",maxWidth:430,margin:"0 auto",width:"100%"}}>
-      {/* Logo */}
       <div style={{marginBottom:32,animation:"up .5s both"}}>
         <div style={{width:64,height:64,background:C.gG,borderRadius:20,display:"flex",alignItems:"center",justifyContent:"center",fontSize:30,boxShadow:"0 0 32px rgba(74,222,128,.3)"}}>🥗</div>
         <div style={{...N,color:C.w,fontSize:32,fontWeight:900,marginTop:16,lineHeight:1.2,letterSpacing:-.8}}>
@@ -553,17 +547,12 @@ function App(){
         </div>
       </div>
 
-      {/* Tabs */}
       {authTab!=="forgot"&&<div style={{display:"flex",background:C.card,borderRadius:16,padding:4,gap:4,marginBottom:24}}>
         {[["login","Sign In"],["register","Create Account"]].map(([k,l])=><button key={k} onClick={()=>{setAuthTab(k);setAuthErr("");}} style={{flex:1,padding:"12px",borderRadius:12,border:"none",background:authTab===k?C.gG:"transparent",color:authTab===k?"#060c08":C.m,fontWeight:800,fontSize:14,...N,transition:"all .2s"}}>{l}</button>)}
       </div>}
 
-      {/* Error */}
-      {authErr&&<div style={{background:"rgba(248,113,113,.1)",border:"1px solid rgba(248,113,113,.3)",borderRadius:13,padding:"12px 16px",marginBottom:18,color:C.r,fontSize:13,fontWeight:600,display:"flex",gap:8,alignItems:"center",animation:"up .3s both"}}>
-        ⚠️ {authErr}
-      </div>}
+      {authErr&&<div style={{background:"rgba(248,113,113,.1)",border:"1px solid rgba(248,113,113,.3)",borderRadius:13,padding:"12px 16px",marginBottom:18,color:C.r,fontSize:13,fontWeight:600,display:"flex",gap:8,alignItems:"center",animation:"up .3s both"}}>⚠️ {authErr}</div>}
 
-      {/* LOGIN */}
       {authTab==="login"&&<div style={{display:"flex",flexDirection:"column",gap:16,animation:"up .4s both"}}>
         <Field label="Username or Email *" value={loginId} onChange={setLoginId} ph="e.g. arjun or arjun@gmail.com"/>
         <Field label="Password *" value={loginPassword} onChange={setLoginPassword} type="password" ph="Enter your password"/>
@@ -577,7 +566,6 @@ function App(){
         </div>
       </div>}
 
-      {/* REGISTER */}
       {authTab==="register"&&<div style={{display:"flex",flexDirection:"column",gap:16,animation:"up .4s both"}}>
         <Field label="Full Name *" value={rName} onChange={setRName} ph="e.g. Arjun Kumar"/>
         <Field label="Username *" value={rUsername} onChange={v=>setRUsername(v.toLowerCase().replace(/\s/g,"_"))} ph="e.g. arjun_kumar"/>
@@ -588,27 +576,15 @@ function App(){
         <button onClick={handleRegister} style={{padding:"18px",borderRadius:16,border:"none",background:C.gG,color:"#060c08",...N,fontSize:17,fontWeight:900,boxShadow:"0 8px 36px rgba(74,222,128,.4)",marginTop:4}}>Create Account →</button>
       </div>}
 
-      {/* FORGOT PASSWORD */}
       {authTab==="forgot"&&<div style={{display:"flex",flexDirection:"column",gap:16,animation:"up .4s both"}}>
-        {authStep==="email"&&<>
-          <Field label="Registered Gmail Address *" value={fEmail} onChange={setFEmail} type="email" ph="Enter your email"/>
-          <button onClick={handleForgotEmail} style={{padding:"18px",borderRadius:16,border:"none",background:C.gG,color:"#060c08",...N,fontSize:16,fontWeight:900,boxShadow:"0 8px 36px rgba(74,222,128,.4)"}}>Send Verification Code</button>
-        </>}
-        {authStep==="otp"&&<>
-          <div style={{fontSize:13,color:C.m,textAlign:"center",marginBottom:-6}}>Enter the 5-digit verification code sent to {fEmail}</div>
-          <OTPBoxes otp={otpArr} setOtp={setOtpArr}/>
-          <div style={{fontSize:12,color:C.m,textAlign:"center"}}>Demo OTP: <span style={{color:C.g,fontWeight:800}}>1 2 3 4 5</span></div>
-          <button onClick={handleForgotOTP} style={{padding:"18px",borderRadius:16,border:"none",background:C.gG,color:"#060c08",...N,fontSize:16,fontWeight:900,boxShadow:"0 8px 36px rgba(74,222,128,.4)"}}>Verify Code ✓</button>
-        </>}
-        {authStep==="reset"&&<>
-          <Field label="New Password *" value={fNewPass} onChange={setFNewPass} type="password" ph="Enter new password"/>
-          <button onClick={handleForgotReset} style={{padding:"18px",borderRadius:16,border:"none",background:C.gG,color:"#060c08",...N,fontSize:16,fontWeight:900,boxShadow:"0 8px 36px rgba(74,222,128,.4)"}}>Update Password</button>
-        </>}
+        {authStep==="email"&&<><Field label="Registered Gmail Address *" value={fEmail} onChange={setFEmail} type="email" ph="Enter your email"/><button onClick={handleForgotEmail} style={{padding:"18px",borderRadius:16,border:"none",background:C.gG,color:"#060c08",...N,fontSize:16,fontWeight:900,boxShadow:"0 8px 36px rgba(74,222,128,.4)"}}>Send Verification Code</button></>}
+        {authStep==="otp"&&<><div style={{fontSize:13,color:C.m,textAlign:"center",marginBottom:-6}}>Enter the 5-digit verification code sent to {fEmail}</div><OTPBoxes otp={otpArr} setOtp={setOtpArr}/><div style={{fontSize:12,color:C.m,textAlign:"center"}}>Demo OTP: <span style={{color:C.g,fontWeight:800}}>1 2 3 4 5</span></div><button onClick={handleForgotOTP} style={{padding:"18px",borderRadius:16,border:"none",background:C.gG,color:"#060c08",...N,fontSize:16,fontWeight:900,boxShadow:"0 8px 36px rgba(74,222,128,.4)"}}>Verify Code ✓</button></>}
+        {authStep==="reset"&&<><Field label="New Password *" value={fNewPass} onChange={setFNewPass} type="password" ph="Enter new password"/><button onClick={handleForgotReset} style={{padding:"18px",borderRadius:16,border:"none",background:C.gG,color:"#060c08",...N,fontSize:16,fontWeight:900,boxShadow:"0 8px 36px rgba(74,222,128,.4)"}}>Update Password</button></>}
         <button onClick={()=>{setAuthTab("login");setAuthErr("");}} style={{padding:"14px",borderRadius:16,border:`1.5px solid ${C.b}`,background:"transparent",color:C.m,...F,fontWeight:700,fontSize:14}}>← Back to Login</button>
       </div>}
     </div>
 
-    {/* Admin Login Modal (Hidden Password logic) */}
+    {/* Admin Login Modal */}
     {modal?.type==="adminLogin"&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.93)",zIndex:960,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
       <div style={{background:C.surf,borderRadius:24,padding:"28px 24px",width:"100%",maxWidth:340,animation:"up .35s cubic-bezier(.34,1.56,.64,1)"}}>
         <div style={{fontSize:48,textAlign:"center"}}>🔐</div>
@@ -708,7 +684,6 @@ function App(){
     {toast&&<Toast t={toast}/>}
     {banner&&<NBanner n={banner} onClose={()=>setBanner(null)}/>}
 
-    {/* PWA Install Banner */}
     {showInstall&&<div style={{position:"fixed",top:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:430,zIndex:9980,background:"linear-gradient(135deg,#1a3020,#0c1610)",borderBottom:`1px solid ${C.g}30`,padding:"12px 16px",display:"flex",alignItems:"center",gap:12,boxShadow:"0 4px 24px rgba(0,0,0,.5)"}}>
       <div style={{fontSize:28,animation:"install 2s infinite"}}>📲</div>
       <div style={{flex:1}}>
@@ -786,7 +761,6 @@ function App(){
     {modal?.type==="editFood"&&<FoodModal food={modal.food} goalId={modal.gId} meal={modal.meal} onSave={d=>saveFood(modal.gId,modal.meal,d)} onClose={()=>setModal(null)}/>}
     {modal?.type==="editPlan"&&<PlanModal plan={modal.plan} onSave={savePlan} onClose={()=>setModal(null)}/>}
 
-    {/* Order Detail Modal */}
     {modal?.type==="orderDetail"&&<Sheet onClose={()=>setModal(null)} tall>
       <div style={{...N,color:C.w,fontWeight:900,fontSize:18,marginBottom:16}}>📦 Order Details</div>
       <div style={{display:"flex",flexDirection:"column",gap:12}}>
@@ -849,7 +823,6 @@ function App(){
         </div>
       </div>
 
-      {/* Smart Tip */}
       <div style={{margin:"0 22px 16px",background:"rgba(74,222,128,.07)",border:"1px solid rgba(74,222,128,.2)",borderRadius:18,padding:"14px 16px",display:"flex",gap:12,alignItems:"flex-start"}}>
         <span style={{fontSize:26}}>{greet.sticker}</span>
         <div style={{flex:1}}>
@@ -859,7 +832,6 @@ function App(){
         </div>
       </div>
 
-      {/* AI Tips */}
       {aiTips.length>0&&<div style={{padding:"0 22px",marginBottom:16}}>
         <div style={{...N,color:C.w,fontSize:15,fontWeight:800,marginBottom:10}}>🤖 Smart Suggestions</div>
         <div style={{display:"flex",gap:10,overflowX:"auto",paddingBottom:4}}>
@@ -872,7 +844,6 @@ function App(){
         </div>
       </div>}
 
-      {/* Calorie Ring */}
       <div style={{margin:"0 22px 16px",background:C.card,borderRadius:24,padding:"18px",border:`1px solid ${C.b}`}}>
         <div style={{display:"flex",alignItems:"center",gap:18}}>
           <div style={{position:"relative",width:84,height:84,flexShrink:0}}>
@@ -902,7 +873,6 @@ function App(){
         </div>
       </div>
 
-      {/* Quick Actions */}
       <div style={{padding:"0 22px",marginBottom:16}}>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
           <button onClick={()=>setTab("menu")} style={{background:C.gG,borderRadius:20,padding:"16px",border:"none",textAlign:"left",boxShadow:"0 8px 28px rgba(74,222,128,.25)"}}>
@@ -919,7 +889,6 @@ function App(){
         </div>
       </div>
 
-      {/* Recommended */}
       <div style={{padding:"0 22px"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
           <div style={{...N,color:C.w,fontSize:16,fontWeight:800}}>{greet.sticker} {(greet.meal||"breakfast").charAt(0).toUpperCase()+(greet.meal||"breakfast").slice(1)} for You</div>
@@ -952,7 +921,6 @@ function App(){
         </div>
       </div>
 
-      {/* Pro Banner */}
       {!curPlan&&<div style={{margin:"16px 22px 0",background:"linear-gradient(135deg,#0c1610,#101a13)",border:"1px solid rgba(74,222,128,.15)",borderRadius:20,padding:"18px",cursor:"pointer"}} onClick={()=>setModal({type:"sub"})}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
           <div>
@@ -1043,7 +1011,6 @@ function App(){
           </div>
         </div>)}
 
-        {/* Bill */}
         <div style={{background:C.card,borderRadius:18,padding:18,marginTop:6,border:`1px solid ${C.b}`,marginBottom:14}}>
           <div style={{...N,color:C.w,fontWeight:800,fontSize:15,marginBottom:14}}>Bill Summary</div>
           {[["Subtotal",`₹${cartSub}`],["Delivery",delivery===0?"🎁 Free":`₹${delivery}`],[`GST (${settings.gst}%)`,`₹${gstAmt}`],["Platform Fee",`₹${settings.platformFee}`]].map(([l,v])=><div key={l} style={{display:"flex",justifyContent:"space-between",marginBottom:10,fontSize:13}}>
@@ -1057,7 +1024,6 @@ function App(){
           {cartSub>=settings.freeDeliveryMin&&<div style={{background:"rgba(74,222,128,.08)",border:"1px solid rgba(74,222,128,.2)",borderRadius:10,padding:"8px 12px",marginTop:12,color:C.g,fontSize:11,fontWeight:700,textAlign:"center"}}>🎁 Free delivery on orders ₹{settings.freeDeliveryMin}+!</div>}
         </div>
 
-        {/* Address */}
         <div style={{background:C.card,borderRadius:18,padding:18,marginBottom:16,border:`1px solid ${C.b}`}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
             <div style={{...N,fontWeight:800,color:C.w,fontSize:14}}>📍 Delivery Address</div>
@@ -1153,7 +1119,6 @@ function App(){
       </div>
 
       <div style={{padding:"0 22px"}}>
-        {/* Stats */}
         <div style={{background:C.card,borderRadius:20,padding:16,border:`1px solid ${C.b}`,marginBottom:14}}>
           <div style={{...N,color:C.w,fontWeight:800,fontSize:14,marginBottom:14}}>📊 Body Stats</div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
@@ -1167,14 +1132,12 @@ function App(){
           </div>
         </div>
 
-        {/* Address */}
         <div style={{background:C.card,borderRadius:20,padding:16,border:`1px solid ${C.b}`,marginBottom:14}}>
           <div style={{...N,color:C.w,fontWeight:800,fontSize:14,marginBottom:12}}>📍 Delivery Address</div>
           <Field value={user?.address||""} onChange={v=>setUser(p=>({...p,address:v}))} ph="Enter your full delivery address..." rows={3}/>
           <button onClick={()=>{setUsers(p=>p.map(u=>u.id===user.id?{...u,address:user.address}:u));pop("✅ Address saved!");}} style={{width:"100%",marginTop:10,background:C.gG,color:"#060c08",border:"none",padding:13,borderRadius:12,fontWeight:800,fontSize:14,...N}}>Save Address</button>
         </div>
 
-        {/* Actions */}
         <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:20}}>
           {[
             {ic:"🖼",l:"Change Profile Picture",fn:()=>setModal({type:"avatar"}),col:C.g,bg:"rgba(74,222,128,.08)",bd:"rgba(74,222,128,.25)"},
@@ -1200,13 +1163,11 @@ function App(){
           </div>
           <button onClick={()=>{setIsAdmin(false);setAdminUser(null);setTab("profile");pop("Exited admin");}} style={{background:"rgba(248,113,113,.15)",border:"1px solid rgba(248,113,113,.3)",color:C.r,padding:"8px 14px",borderRadius:20,fontSize:12,fontWeight:700,...N}}>Exit</button>
         </div>
-        {/* Quick stats */}
         <div style={{display:"flex",gap:8,marginTop:14,flexWrap:"wrap"}}>
           {[[`${orders.length} Orders`,C.g],[`₹${orders.reduce((s,o)=>s+o.total,0)} Rev`,C.o],[`${users.length} Users`,C.pur],[`${planActivations.length} Plans`,C.gold],[`${allFlat.filter(i=>i.active&&i.stock).length} Items`,C.blue]].map(([l,c])=><div key={l} style={{background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.08)",borderRadius:99,padding:"4px 12px",fontSize:10,fontWeight:700,color:c}}>{l}</div>)}
         </div>
       </div>
 
-      {/* Admin Tabs */}
       <div style={{padding:"0 22px 14px"}}>
         <div style={{display:"flex",background:C.card,borderRadius:14,padding:4,gap:2,overflowX:"auto"}}>
           {[["orders","📦"],["foods","🍽"],["plans","⚡"],["activations","🏅"],["customers","👥"],["settings","⚙️"],["stats","📊"]].map(([k,ic])=><button key={k} onClick={()=>setAdminTab(k)} style={{flexShrink:0,padding:"9px 10px",borderRadius:10,border:"none",background:adminTab===k?C.blue:"transparent",color:adminTab===k?"#fff":C.m,fontWeight:700,fontSize:11,...F,whiteSpace:"nowrap"}}>
@@ -1215,14 +1176,12 @@ function App(){
         </div>
       </div>
 
-      {/* ── ORDERS ── */}
       {adminTab==="orders"&&<div style={{padding:"0 22px"}}>
         <div style={{background:"rgba(96,165,250,.08)",border:"1px solid rgba(96,165,250,.2)",borderRadius:12,padding:"12px 14px",marginBottom:14,fontSize:12,color:C.blue,lineHeight:1.6}}>
           💡 Tap <b>"View Details"</b> to see full customer info. Tap <b>"Update →"</b> to advance order status.
         </div>
         {orders.length===0?<div style={{textAlign:"center",padding:"40px 0"}}><div style={{fontSize:52}}>📦</div><div style={{color:C.m,fontWeight:700,marginTop:12,...N}}>No orders yet</div></div>:
         orders.map(order=><div key={order.id} style={{background:C.card,borderRadius:20,marginBottom:14,border:`1px solid ${order.statusIdx<4?"rgba(74,222,128,.3)":C.b}`,overflow:"hidden"}}>
-          {/* Order Header */}
           <div style={{background:"linear-gradient(135deg,#080f1c,#0c1610)",padding:"14px 16px"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
               <div>
@@ -1234,7 +1193,6 @@ function App(){
                 <div style={{fontSize:10,color:C.m}}>{order.paymentStatus}</div>
               </div>
             </div>
-            {/* Customer Info */}
             <div style={{background:"rgba(255,255,255,.04)",borderRadius:10,padding:"10px 12px"}}>
               <div style={{display:"flex",gap:16,flexWrap:"wrap"}}>
                 <div style={{fontSize:12,color:C.m}}>👤 <span style={{color:C.w,fontWeight:700}}>{order.userName}</span></div>
@@ -1244,13 +1202,11 @@ function App(){
               <div style={{fontSize:11,color:C.m,marginTop:6}}>📍 {order.userAddress||"No address"}</div>
             </div>
           </div>
-          {/* Progress */}
           <div style={{display:"flex",gap:3,padding:"10px 16px 0"}}>
             {ORDER_STEPS.map((_,i)=><div key={i} style={{flex:1,height:4,borderRadius:99,background:i<=order.statusIdx?C.g:C.b,transition:"background .5s"}}/>)}
           </div>
           <div style={{padding:"10px 16px 14px"}}>
             <div style={{color:C.g,fontSize:11,fontWeight:700,marginBottom:8}}>{ORDER_STEPS[order.statusIdx]?.icon} {ORDER_STEPS[order.statusIdx]?.label}</div>
-            {/* Items */}
             <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:12}}>
               {order.items.map(i=><span key={i.id} style={{background:C.surf,color:C.m,padding:"3px 10px",borderRadius:99,fontSize:11}}>{i.emoji} {i.name} ×{i.qty}</span>)}
             </div>
@@ -1267,7 +1223,6 @@ function App(){
         </div>)}
       </div>}
 
-      {/* ── FOODS ── */}
       {adminTab==="foods"&&<div style={{padding:"0 22px"}}>
         <div style={{background:"rgba(96,165,250,.08)",border:"1px solid rgba(96,165,250,.2)",borderRadius:12,padding:"11px 14px",marginBottom:14,fontSize:12,color:C.blue}}>
           💡 <b>➕</b> Add · <b>✏️</b> Edit · <b>👁/🙈</b> Show/Hide · <b>📦/🚫</b> Stock · <b>🗑</b> Delete
@@ -1301,7 +1256,6 @@ function App(){
         </div>)}
       </div>}
 
-      {/* ── PLANS CRUD ── */}
       {adminTab==="plans"&&<div style={{padding:"0 22px"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
           <div style={{color:C.m,fontSize:12}}>Manage subscription plans</div>
@@ -1328,7 +1282,6 @@ function App(){
         </div>)}
       </div>}
 
-      {/* ── PLAN ACTIVATIONS ── */}
       {adminTab==="activations"&&<div style={{padding:"0 22px"}}>
         <div style={{...N,color:C.w,fontWeight:800,fontSize:15,marginBottom:14}}>🏅 Plan Activations ({planActivations.length})</div>
         {planActivations.length===0?<div style={{textAlign:"center",padding:"40px 0"}}><div style={{fontSize:52}}>🏅</div><div style={{color:C.m,fontWeight:700,marginTop:12,...N}}>No plan activations yet</div></div>:
@@ -1347,7 +1300,6 @@ function App(){
         </div>)}
       </div>}
 
-      {/* ── CUSTOMERS ── */}
       {adminTab==="customers"&&<div style={{padding:"0 22px"}}>
         <div style={{...N,color:C.w,fontWeight:800,fontSize:15,marginBottom:14}}>👥 Customers ({users.length})</div>
         {users.length===0?<div style={{textAlign:"center",padding:"40px 0"}}><div style={{fontSize:52}}>👥</div><div style={{color:C.m,fontWeight:700,marginTop:12,...N}}>No customers yet</div></div>:
@@ -1368,7 +1320,6 @@ function App(){
         </div>)}
       </div>}
 
-      {/* ── SETTINGS ── */}
       {adminTab==="settings"&&<div style={{padding:"0 22px"}}>
         <div style={{background:C.card,borderRadius:20,padding:18,border:`1px solid ${C.b}`,marginBottom:14}}>
           <div style={{...N,color:C.w,fontWeight:800,fontSize:15,marginBottom:18}}>🚚 Delivery & Pricing</div>
@@ -1384,7 +1335,6 @@ function App(){
               <input type="number" value={settings[key]} onChange={e=>setSettings(p=>({...p,[key]:+e.target.value}))} min={0} style={{width:"100%",padding:"12px 16px",background:C.surf,border:`1.5px solid ${C.b}`,borderRadius:12,color:C.w,fontSize:14,...F,boxSizing:"border-box"}}/>
             </div>)}
           </div>
-          {/* Preview */}
           <div style={{background:"rgba(74,222,128,.07)",border:"1px solid rgba(74,222,128,.2)",borderRadius:14,padding:"14px 16px",marginTop:16,marginBottom:14}}>
             <div style={{...N,color:C.g,fontWeight:800,fontSize:13,marginBottom:10}}>Preview for ₹300 order:</div>
             {[["Subtotal","₹300"],["Delivery",300<settings.freeDeliveryMin?`₹${settings.deliveryCharge}`:"🎁 Free"],["GST",`₹${Math.round(300*settings.gst/100)}`],["Platform Fee",`₹${settings.platformFee}`],["Total",`₹${300+(300<settings.freeDeliveryMin?settings.deliveryCharge:0)+Math.round(300*settings.gst/100)+settings.platformFee}`]].map(([l,v])=><div key={l} style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:5}}>
@@ -1394,7 +1344,6 @@ function App(){
           <button onClick={()=>pop("✅ Settings saved!")} style={{width:"100%",background:C.gG,color:"#060c08",border:"none",padding:"14px",borderRadius:14,fontWeight:800,fontSize:14,...N}}>Save Settings ✓</button>
         </div>
 
-        {/* Admin Accounts */}
         <div style={{background:C.card,borderRadius:20,padding:18,border:`1px solid ${C.b}`,marginBottom:14}}>
           <div style={{...N,color:C.w,fontWeight:800,fontSize:15,marginBottom:14}}>👥 Admin Accounts (Authorized Only)</div>
           {admins.map(a=><div key={a.id} style={{background:C.surf,borderRadius:14,padding:"14px",marginBottom:10,border:`1px solid ${a.active?"rgba(74,222,128,.3)":C.b}`,opacity:a.active?1:.5}}>
@@ -1412,7 +1361,6 @@ function App(){
         </div>
       </div>}
 
-      {/* ── STATS ── */}
       {adminTab==="stats"&&<div style={{padding:"0 22px"}}>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:18}}>
           {[["📦","Orders",orders.length,C.g],["💰","Revenue","₹"+orders.reduce((s,o)=>s+o.total,0),C.o],["👥","Customers",users.length,C.pur],["🏅","Activations",planActivations.length,C.gold],["🍽","Items",allFlat.length,C.blue],["✅","Active",allFlat.filter(i=>i.active&&i.stock).length,C.g]].map(([ic,l,v,col])=><div key={l} style={{background:C.card,borderRadius:18,padding:"16px",border:`1px solid ${C.b}`}}>
